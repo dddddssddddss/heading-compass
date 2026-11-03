@@ -7,6 +7,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans+KR:wght@400;600;700&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
 /* 레이아웃: 계기판 하나가 화면 중심, 아래에 판독값과 센서별 원시값 표 */
 :root{
@@ -28,8 +30,15 @@ body{min-height:100vh;display:flex;flex-direction:column;align-items:center;gap:
 header{width:100%;max-width:440px;display:flex;justify-content:space-between;align-items:baseline;gap:12px}
 h1{font-size:1.15rem;margin:0;font-weight:700}
 .src{font-family:var(--f-num);font-size:.72rem;color:var(--muted);text-align:right}
-.dial-wrap{width:min(80vw,320px);aspect-ratio:1;max-width:100%}
-#dial{width:100%;height:100%;display:block}
+.map-wrap{position:relative;width:100%;max-width:440px;height:min(60vh,480px);border-radius:12px;overflow:hidden;border:1px solid var(--line)}
+#map{width:100%;height:100%;background:var(--panel)}
+#locate{position:absolute;right:12px;bottom:24px;z-index:1001;width:44px;height:44px;padding:0;border-radius:50%;
+  background:#fff;color:#2b6ff3;font-size:1.3rem;line-height:1;box-shadow:0 1px 6px rgba(0,0,0,.3)}
+/* 내 위치: 파란 점 + 바라보는 방향으로 퍼지는 빔 */
+.me{position:relative;width:220px;height:220px;pointer-events:none}
+.me .beam{position:absolute;inset:0;width:100%;height:100%;visibility:hidden}
+.me .pt{position:absolute;left:50%;top:50%;width:20px;height:20px;margin:-10px 0 0 -10px;border-radius:50%;
+  background:#2b6ff3;border:3px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.45)}
 .readout{display:flex;flex-direction:column;align-items:center;gap:2px}
 .lbl{font-size:.8rem;color:var(--muted);font-weight:600}
 #card{font-size:2.6rem;font-weight:700;line-height:1.15;color:var(--accent)}
@@ -70,16 +79,9 @@ label.tog input{width:20px;height:20px;accent-color:var(--accent)}
   <span class="src" id="mode">센서 대기</span>
 </header>
 
-<div class="dial-wrap" aria-hidden="true">
-  <svg id="dial" viewBox="-160 -160 320 320">
-    <circle r="152" fill="var(--dial)" stroke="var(--line)" stroke-width="2"/>
-    <g id="rose"></g>
-    <g id="arrow" visibility="hidden">
-      <path d="M0,0 L-36,-89 A96,96 0 0 1 36,-89 Z" fill="var(--accent)" opacity=".15"/>
-      <path d="M0,-94 L24,-46 L7,-52 L7,22 L-7,22 L-7,-52 L-24,-46 Z" fill="var(--accent)" stroke="var(--dial)" stroke-width="2" stroke-linejoin="round"/>
-    </g>
-    <circle r="9" fill="var(--fg)" stroke="var(--dial)" stroke-width="3"/>
-  </svg>
+<div class="map-wrap">
+  <div id="map" aria-label="내 위치와 바라보는 방향 지도"></div>
+  <button id="locate" type="button" aria-label="내 위치로 이동">◎</button>
 </div>
 
 <div class="readout" aria-live="polite">
@@ -135,19 +137,24 @@ label.tog input{width:20px;height:20px;accent-color:var(--accent)}
   const $ = id => document.getElementById(id);
   const KR16 = ["북","북북동","북동","동북동","동","동남동","남동","남남동","남","남남서","남서","서남서","서","서북서","북서","북북서"];
 
-  // ---------- 다이얼 ----------
-  const rose = $("rose"), NS = "http://www.w3.org/2000/svg";
-  const mk = (tag, a, t) => { const e = document.createElementNS(NS, tag); for (const k in a) e.setAttribute(k, a[k]); if (t) e.textContent = t; rose.appendChild(e); };
-  for (let d = 0; d < 360; d += 5) {
-    const major = d % 30 === 0, card = d % 90 === 0;
-    const r1 = 148, r2 = card ? 124 : major ? 132 : 140, s = Math.sin(d*D2R), c = -Math.cos(d*D2R);
-    mk("line", { x1:s*r1, y1:c*r1, x2:s*r2, y2:c*r2, stroke: card?"var(--fg)":"var(--muted)", "stroke-width": card?3:major?2:1 });
-    if (major) {
-      const rt = card ? 104 : 114;
-      mk("text", { x:s*rt, y:c*rt, "text-anchor":"middle", "dominant-baseline":"central",
-        fill: d===0?"var(--accent)":card?"var(--fg)":"var(--muted)", "font-family": card?"IBM Plex Sans KR, sans-serif":"IBM Plex Mono, monospace",
-        "font-size": card?22:12, "font-weight": card?700:400 }, card ? ["북","동","남","서"][d/90] : String(d));
-    }
+  // ---------- 지도 (북쪽 위 고정, 내 위치 점 + 바라보는 방향 빔) ----------
+  const map = L.map("map", { zoomControl:false }).setView([37.5665, 126.978], 17);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom:19,
+    attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }).addTo(map);
+  const acc = L.circle(map.getCenter(), { radius:0, stroke:false, fillColor:"#2b6ff3", fillOpacity:.12, interactive:false }).addTo(map);
+  const me = L.marker(map.getCenter(), { interactive:false, keyboard:false, icon: L.divIcon({ className:"", iconSize:[220,220], iconAnchor:[110,110],
+    html:'<div class="me"><svg class="beam" viewBox="-80 -80 160 160"><defs><radialGradient id="beamG" cx="0" cy="0" r="80" gradientUnits="userSpaceOnUse">'
+      + '<stop offset="0" stop-color="#2b6ff3" stop-opacity=".8"/><stop offset="1" stop-color="#2b6ff3" stop-opacity="0"/></radialGradient></defs>'
+      + '<path d="M0,0 L-33,-73 A80,80 0 0 1 33,-73 Z" fill="url(#beamG)"/></svg><span class="pt"></span></div>' }) }).addTo(map);
+  const beam = me.getElement().querySelector(".beam");
+  let follow = true, hasFix = false;
+  map.on("dragstart", () => { follow = false; });
+  $("locate").addEventListener("click", () => { follow = true; if (hasFix) map.setView(me.getLatLng(), Math.max(map.getZoom(), 17)); });
+  function onPos(p) {
+    const ll = [p.coords.latitude, p.coords.longitude];
+    me.setLatLng(ll); acc.setLatLng(ll).setRadius(p.coords.accuracy || 0);
+    if (follow) map.setView(ll, hasFix ? map.getZoom() : 17, { animate: hasFix });
+    hasFix = true;
   }
 
   // ---------- 벡터/행렬 ----------
@@ -359,9 +366,8 @@ label.tog input{width:20px;height:20px;accent-color:var(--accent)}
     const h = wrap(S.heading + (useTrue ? DECL : 0));
     // 북쪽 고정 판 위에서 화살표만 회전 (359→0 넘어갈 때 한 바퀴 돌지 않게 누적각 사용)
     S.disp = S.disp == null ? h : S.disp + angDiff(h, S.disp);
-    const arrow = $("arrow");
-    arrow.setAttribute("transform", `rotate(${S.disp})`);
-    arrow.setAttribute("visibility", "visible");
+    beam.style.transform = `rotate(${S.disp}deg)`;
+    beam.style.visibility = "visible";
     $("deg").firstChild.nodeValue = String(Math.round(h) % 360).padStart(3, "0");
     $("card").textContent = KR16[Math.round(h/22.5) % 16];
     $("ref").textContent = useTrue ? "진북 기준" : "자북 기준";
@@ -386,6 +392,9 @@ label.tog input{width:20px;height:20px;accent-color:var(--accent)}
     } catch (err) { setMsg("센서 권한이 거부되었습니다 (" + err.message + "). 브라우저 설정에서 허용 후 새로고침하세요.", "warn"); return; }
 
     S.started = true;
+    if (navigator.geolocation) navigator.geolocation.watchPosition(onPos,
+      err => setMsg("위치를 가져오지 못했습니다 (" + err.message + "). 방향만 표시합니다.", "warn"),
+      { enableHighAccuracy:true, maximumAge:3000, timeout:20000 });
     window.addEventListener("devicemotion", onMotion);
     if ("ondeviceorientationabsolute" in window) window.addEventListener("deviceorientationabsolute", e => onOrientation(e, true));
     else window.addEventListener("deviceorientation", e => onOrientation(e, false));
@@ -398,7 +407,7 @@ label.tog input{width:20px;height:20px;accent-color:var(--accent)}
 
     try { if (navigator.wakeLock) await navigator.wakeLock.request("screen"); } catch (e) {}
     $("start").disabled = true; $("start").textContent = "측정 중";
-    setMsg("측정 중입니다. 폰을 어떤 각도로 들어도 빨간 화살표가 지금 바라보는 방향입니다 (판은 북쪽이 위로 고정).", "ok");
+    setMsg("측정 중입니다. 지도 위 파란 점이 내 위치, 퍼지는 빛이 지금 바라보는 방향입니다 (지도는 북쪽이 위).", "ok");
     setTimeout(() => {
       if (!S.accRaw) setMsg("가속도·자이로 값이 들어오지 않습니다. 휴대폰 브라우저에서 열었는지 확인하세요.", "warn");
       else if (!S.heading) setMsg("북쪽 기준을 잡지 못했습니다. 폰으로 공중에 8자를 몇 번 그려 주세요.", "warn");
