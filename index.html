@@ -1,0 +1,417 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>방향 나침반</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans+KR:wght@400;600;700&display=swap">
+<style>
+/* 레이아웃: 계기판 하나가 화면 중심, 아래에 판독값과 센서별 원시값 표 */
+:root{
+  --bg:#eef1ee; --panel:#f8faf8; --fg:#17201b; --muted:#5d6b63; --line:#c9d2cc;
+  --accent:#d2461f; --dial:#ffffff; --ok:#2f7d4f; --warn:#b7791f; --off:#9aa59f;
+  --f-ui:"IBM Plex Sans KR",system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --f-num:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root{--bg:#101512;--panel:#171e1a;--fg:#e4ebe6;--muted:#8d9b93;--line:#2c3631;
+    --accent:#ff6a3d;--dial:#0c100e;--ok:#5fbf86;--warn:#e0a84a;--off:#55625b;color-scheme:dark}
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--f-ui);-webkit-text-size-adjust:100%}
+body{min-height:100vh;display:flex;flex-direction:column;align-items:center;gap:18px;
+  padding-block:max(20px,env(safe-area-inset-top)) max(28px,env(safe-area-inset-bottom));
+  padding-left:max(16px,env(safe-area-inset-left));padding-right:max(16px,env(safe-area-inset-right))}
+header{width:100%;max-width:440px;display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+h1{font-size:1.15rem;margin:0;font-weight:700}
+.src{font-family:var(--f-num);font-size:.72rem;color:var(--muted);text-align:right}
+.dial-wrap{width:min(80vw,320px);aspect-ratio:1;max-width:100%}
+#dial{width:100%;height:100%;display:block}
+.readout{display:flex;flex-direction:column;align-items:center;gap:2px}
+#deg{font-family:var(--f-num);font-size:3.4rem;font-weight:600;line-height:1;font-variant-numeric:tabular-nums}
+#deg sup{font-size:.45em;vertical-align:.9em}
+#card{font-size:1.4rem;font-weight:700;color:var(--accent)}
+#ref{font-size:.78rem;color:var(--muted)}
+.box{width:100%;max-width:440px;background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.box h2{margin:0;padding:10px 14px;font-size:.78rem;letter-spacing:.06em;color:var(--muted);border-bottom:1px solid var(--line);font-weight:600}
+.row{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;padding:10px 14px;border-bottom:1px solid var(--line);align-items:center}
+.row:last-child{border-bottom:0}
+.name{display:flex;align-items:center;gap:8px;font-weight:600;font-size:.92rem}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--off);flex:none}
+.dot.on{background:var(--ok)} .dot.warn{background:var(--warn)}
+.val{font-family:var(--f-num);font-size:.82rem;text-align:right;font-variant-numeric:tabular-nums;min-width:0;overflow-wrap:anywhere}
+.sub{grid-column:1/-1;font-size:.75rem;color:var(--muted)}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+.cell{padding:10px 14px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:2px;min-width:0}
+.cell:nth-child(odd){border-right:1px solid var(--line)}
+.cell:nth-last-child(-n+2){border-bottom:0}
+.k{font-size:.72rem;color:var(--muted)}
+.v{font-family:var(--f-num);font-size:.95rem;font-variant-numeric:tabular-nums}
+.controls{width:100%;max-width:440px;display:flex;flex-direction:column;gap:10px}
+button{font:inherit;font-weight:600;font-size:1rem;padding:14px;border-radius:10px;border:0;background:var(--accent);color:#fff;cursor:pointer}
+button.sec{background:transparent;color:var(--fg);border:1px solid var(--line)}
+button:focus-visible,input:focus-visible{outline:3px solid var(--fg);outline-offset:2px}
+button[disabled]{opacity:.5}
+label.tog{display:flex;align-items:center;gap:10px;font-size:.92rem}
+label.tog input{width:20px;height:20px;accent-color:var(--accent)}
+#msg{width:100%;max-width:440px;font-size:.88rem;line-height:1.55;padding:10px 14px;border-radius:10px;background:var(--panel);border:1px solid var(--line);color:var(--muted)}
+#msg.warn{border-color:var(--warn);color:var(--fg)} #msg.ok{border-color:var(--ok)}
+.hint{max-width:440px;font-size:.8rem;color:var(--muted);line-height:1.6;margin:0}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>방향 나침반</h1>
+  <span class="src" id="mode">센서 대기</span>
+</header>
+
+<div class="dial-wrap" aria-hidden="true">
+  <svg id="dial" viewBox="-160 -160 320 320">
+    <circle r="152" fill="var(--dial)" stroke="var(--line)" stroke-width="2"/>
+    <g id="rose"></g>
+    <path d="M0,-158 L-11,-136 L11,-136 Z" fill="var(--accent)"/>
+    <line x1="0" y1="-132" x2="0" y2="-40" stroke="var(--accent)" stroke-width="3" stroke-linecap="round"/>
+    <circle r="5" fill="var(--accent)"/>
+  </svg>
+</div>
+
+<div class="readout" aria-live="polite">
+  <div id="deg">---<sup>°</sup></div>
+  <div id="card">—</div>
+  <div id="ref">자북 기준</div>
+</div>
+
+<div class="controls">
+  <button id="start" type="button">센서 시작</button>
+  <button id="cal" type="button" class="sec" hidden>자력계 보정 (15초)</button>
+  <label class="tog"><input type="checkbox" id="trueN"> 진북 기준으로 보기 (한국 자편각 약 −9°)</label>
+</div>
+
+<div id="msg">휴대폰에서 열고 <b>센서 시작</b>을 누르세요.</div>
+
+<section class="box" aria-label="내장 센서">
+  <h2>내장 센서 원시값</h2>
+  <div class="row">
+    <span class="name"><span class="dot" id="dAcc"></span>가속도계</span>
+    <span class="val" id="vAcc">—</span>
+    <span class="sub">중력 방향 → 폰의 앞뒤·좌우 기울기 (m/s²)</span>
+  </div>
+  <div class="row">
+    <span class="name"><span class="dot" id="dGyr"></span>자이로</span>
+    <span class="val" id="vGyr">—</span>
+    <span class="sub">회전 속도 적분 → 빠르고 부드러운 방향 변화 (°/s)</span>
+  </div>
+  <div class="row">
+    <span class="name"><span class="dot" id="dMag"></span>자력계</span>
+    <span class="val" id="vMag">—</span>
+    <span class="sub" id="sMag">지구 자기장 → 북쪽 기준 (µT)</span>
+  </div>
+</section>
+
+<section class="box" aria-label="자세">
+  <div class="grid">
+    <div class="cell"><span class="k">폰 자세</span><span class="v" id="pose">—</span></div>
+    <div class="cell"><span class="k">방향 기준 축</span><span class="v" id="axis">—</span></div>
+    <div class="cell"><span class="k">앞뒤 기울기</span><span class="v" id="pitch">—</span></div>
+    <div class="cell"><span class="k">좌우 기울기</span><span class="v" id="roll">—</span></div>
+  </div>
+</section>
+
+<p class="hint">자이로로 회전을 적분해 빠르게 따라가고, 가속도계(중력)로 기울기를, 자력계로 북쪽을 계속 보정합니다(상보 필터). 폰을 평평하게 들면 <b>폰 윗부분</b>, 세워 들면 <b>후면 카메라</b>가 바라보는 방향이며, 그 사이 각도는 두 기준이 이어집니다.</p>
+
+<script>
+(() => {
+  const D2R = Math.PI / 180, R2D = 180 / Math.PI;
+  const DECL = -9;
+  const K_CORR = 0.02;            // 가속도·자력계 보정 비율 (작을수록 자이로 신뢰)
+  const $ = id => document.getElementById(id);
+  const KR16 = ["북","북북동","북동","동북동","동","동남동","남동","남남동","남","남남서","남서","서남서","서","서북서","북서","북북서"];
+
+  // ---------- 다이얼 ----------
+  const rose = $("rose"), NS = "http://www.w3.org/2000/svg";
+  const mk = (tag, a, t) => { const e = document.createElementNS(NS, tag); for (const k in a) e.setAttribute(k, a[k]); if (t) e.textContent = t; rose.appendChild(e); };
+  for (let d = 0; d < 360; d += 5) {
+    const major = d % 30 === 0, card = d % 90 === 0;
+    const r1 = 148, r2 = card ? 124 : major ? 132 : 140, s = Math.sin(d*D2R), c = -Math.cos(d*D2R);
+    mk("line", { x1:s*r1, y1:c*r1, x2:s*r2, y2:c*r2, stroke: card?"var(--fg)":"var(--muted)", "stroke-width": card?3:major?2:1 });
+    if (major) {
+      const rt = card ? 104 : 114;
+      mk("text", { x:s*rt, y:c*rt, "text-anchor":"middle", "dominant-baseline":"central", transform:`rotate(${d} ${s*rt} ${c*rt})`,
+        fill: d===0?"var(--accent)":card?"var(--fg)":"var(--muted)", "font-family": card?"IBM Plex Sans KR, sans-serif":"IBM Plex Mono, monospace",
+        "font-size": card?22:12, "font-weight": card?700:400 }, card ? ["북","동","남","서"][d/90] : String(d));
+    }
+  }
+
+  // ---------- 벡터/행렬 ----------
+  const dot = (a,b) => a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+  const cross = (a,b) => [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
+  const norm = a => { const n = Math.hypot(a[0],a[1],a[2]) || 1; return [a[0]/n,a[1]/n,a[2]/n]; };
+  const wrap = d => ((d % 360) + 360) % 360;
+  const angDiff = (a,b) => ((a - b + 540) % 360) - 180;
+
+  // R: 기기 → 지구(동,북,위) 회전행렬, 행 우선 [9]
+  //   열 = 기기 축(X 오른쪽, Y 위쪽, Z 화면 바깥)의 지구 좌표
+  //   행 = 지구 축(동, 북, 위)의 기기 좌표
+  function orthonormalize(R) {
+    let X = norm([R[0],R[3],R[6]]);
+    let Y = [R[1],R[4],R[7]];
+    const d = dot(Y,X); Y = norm([Y[0]-d*X[0], Y[1]-d*X[1], Y[2]-d*X[2]]);
+    const Z = cross(X,Y);
+    return [X[0],Y[0],Z[0], X[1],Y[1],Z[1], X[2],Y[2],Z[2]];
+  }
+  function fromRows(E,N,U) { return [E[0],E[1],E[2], N[0],N[1],N[2], U[0],U[1],U[2]]; }
+  function fromEuler(alpha, beta, gamma) {      // W3C DeviceOrientation 정의
+    const cX=Math.cos(beta*D2R), sX=Math.sin(beta*D2R), cY=Math.cos(gamma*D2R), sY=Math.sin(gamma*D2R), cZ=Math.cos(alpha*D2R), sZ=Math.sin(alpha*D2R);
+    return [cZ*cY-sZ*sX*sY, -cX*sZ, cY*sZ*sX+cZ*sY,
+            cY*sZ+cZ*sX*sY,  cZ*cX, sZ*sY-cZ*cY*sX,
+            -cX*sY,          sX,    cX*cY];
+  }
+
+  // ---------- 센서 상태 ----------
+  const S = {
+    R: null,                  // 퓨전 결과
+    grav: null,               // 저역통과한 중력(기기 좌표, '위' 방향)
+    accSign: 1, accVote: 0,   // 브라우저마다 가속도 부호가 다를 수 있어 자동 판별
+    gyro: [0,0,0],            // rad/s
+    gyroSrc: null, accSrc: null,
+    mag: null, magOn: false, magOff: [0,0,0], magLen: 0,
+    osNorth: null,            // OS 방위(자력계 원시값이 없을 때 북쪽 기준)
+    osUp: null,
+    iosOffset: null,
+    lastT: 0, rate: 0, cnt: 0, rateT: performance.now(),
+    heading: null, pose: "—", axis: "—", pitch: 0, roll: 0,
+    cal: null
+  };
+
+  let useTrue = false;
+  try { useTrue = localStorage.getItem("trueN") === "1"; } catch (e) {}
+  $("trueN").checked = useTrue;
+  $("trueN").addEventListener("change", e => { useTrue = e.target.checked; try { localStorage.setItem("trueN", useTrue?"1":"0"); } catch (e2) {} });
+
+  // ---------- 1) 자이로 + 가속도계 (devicemotion: 모든 폰) ----------
+  function onMotion(e) {
+    const g = e.accelerationIncludingGravity, r = e.rotationRate;
+    if (g && g.x != null) {
+      let a = [g.x, g.y, g.z];
+      if (S.osUp) {                       // OS 자세와 비교해 부호 자동 판별
+        S.accVote = Math.max(-60, Math.min(60, S.accVote + Math.sign(dot(a, S.osUp))));
+        S.accSign = S.accVote >= 0 ? 1 : -1;
+      }
+      a = a.map(v => v * S.accSign);
+      S.accRaw = a; S.accSrc = S.accSrc || "devicemotion";
+      S.grav = S.grav ? S.grav.map((v,i) => v + (a[i]-v)*0.12) : a;
+    }
+    if (r && r.alpha != null && S.gyroSrc !== "Gyroscope") {
+      // rotationRate: alpha=Z축, beta=X축, gamma=Y축 (°/s)
+      S.gyro = [r.beta*D2R, r.gamma*D2R, r.alpha*D2R];
+      S.gyroSrc = "devicemotion";
+    }
+    step(e.timeStamp || performance.now());
+  }
+
+  // ---------- 2) 자력계 원시값 (안드로이드 크롬, 지원 시) ----------
+  function startMagnetometer() {
+    if (!("Magnetometer" in window)) return false;
+    try {
+      const m = new Magnetometer({ frequency: 30 });
+      m.addEventListener("reading", () => {
+        const raw = [m.x, m.y, m.z];
+        S.magRaw = raw;
+        if (S.cal) { for (let i=0;i<3;i++){ S.cal.min[i]=Math.min(S.cal.min[i],raw[i]); S.cal.max[i]=Math.max(S.cal.max[i],raw[i]); } }
+        const v = raw.map((x,i) => x - S.magOff[i]);
+        S.magLen = Math.hypot(v[0],v[1],v[2]);
+        S.mag = v; S.magOn = true;
+      });
+      m.addEventListener("error", () => { S.magOn = false; S.mag = null; });
+      m.start();
+      try { const o = JSON.parse(localStorage.getItem("magOff")); if (Array.isArray(o)) S.magOff = o; } catch (e) {}
+      return true;
+    } catch (e) { return false; }
+  }
+  function startGyroscope() {
+    if (!("Gyroscope" in window)) return;
+    try {
+      const g = new Gyroscope({ frequency: 60 });
+      g.addEventListener("reading", () => { S.gyro = [g.x, g.y, g.z]; S.gyroSrc = "Gyroscope"; });
+      g.start();
+    } catch (e) {}
+  }
+
+  // ---------- 3) OS 방위 (자력계 원시값을 못 받을 때 북쪽 기준) ----------
+  function onOrientation(e, absKnown) {
+    if (e.alpha == null || e.beta == null || e.gamma == null) return;
+    let alpha = e.alpha, abs = absKnown || e.absolute;
+    if (typeof e.webkitCompassHeading === "number" && e.webkitCompassHeading >= 0) {
+      const absA = wrap(360 - e.webkitCompassHeading), off = angDiff(absA, e.alpha);
+      const flat = Math.abs(e.beta) < 35 && Math.abs(e.gamma) < 35;
+      if (S.iosOffset === null) S.iosOffset = off;
+      else if (flat) S.iosOffset = wrap(S.iosOffset + angDiff(off, S.iosOffset) * 0.05);
+      alpha = wrap(e.alpha + S.iosOffset); abs = true;
+      S.iosAcc = e.webkitCompassAccuracy;
+    }
+    const Ro = fromEuler(alpha, e.beta, e.gamma);
+    S.osUp = [Ro[6], Ro[7], Ro[8]];
+    if (abs) S.osNorth = [Ro[3], Ro[4], Ro[5]];
+  }
+
+  // ---------- 퓨전 (상보 필터) ----------
+  function referenceR() {
+    if (!S.grav) return null;
+    const U = norm(S.grav);
+    let E, N;
+    const magGood = S.magOn && S.mag && S.magLen > 20 && S.magLen < 75;
+    if (magGood) {                        // 자력계: 기울기 보정된 북쪽
+      E = norm(cross(S.mag, U)); N = cross(U, E);
+      S.northSrc = "자력계";
+    } else if (S.osNorth) {               // OS 방위의 북쪽을 현재 수평면에 투영
+      const d = dot(S.osNorth, U);
+      N = norm([S.osNorth[0]-d*U[0], S.osNorth[1]-d*U[1], S.osNorth[2]-d*U[2]]);
+      E = cross(N, U);
+      S.northSrc = "OS 나침반";
+    } else return null;
+    return fromRows(E, N, U);
+  }
+
+  function step(t) {
+    let dt = S.lastT ? (t - S.lastT) / 1000 : 0;
+    S.lastT = t;
+    if (!(dt > 0 && dt < 0.2)) dt = 0;
+    S.cnt++;
+
+    // 자이로 적분: dR/dt = R·[ω]×
+    if (S.R && dt) {
+      const [wx,wy,wz] = S.gyro, R = S.R;
+      const W = [0,-wz,wy, wz,0,-wx, -wy,wx,0];
+      const N = R.slice();
+      for (let r=0;r<3;r++) for (let c=0;c<3;c++) {
+        let s = 0; for (let k=0;k<3;k++) s += R[r*3+k]*W[k*3+c];
+        N[r*3+c] += s * dt;
+      }
+      S.R = orthonormalize(N);
+    }
+
+    // 가속도계 + 자력계(또는 OS 방위)로 천천히 끌어당김
+    const Rr = referenceR();
+    if (Rr) {
+      if (!S.R) S.R = Rr;
+      else {
+        let tr = 0; for (let i=0;i<3;i++) for (let k=0;k<3;k++) tr += S.R[k*3+i]*Rr[k*3+i];
+        const ang = Math.acos(Math.max(-1, Math.min(1, (tr-1)/2))) * R2D;
+        const k = ang > 40 ? 1 : (dt ? K_CORR : 0.1);
+        S.R = orthonormalize(S.R.map((v,i) => v + (Rr[i]-v)*k));
+      }
+    }
+    if (S.R) facing();
+  }
+
+  function screenAngle() {
+    if (screen.orientation && typeof screen.orientation.angle === "number") return screen.orientation.angle;
+    return typeof window.orientation === "number" ? window.orientation : 0;
+  }
+
+  // 바라보는 방향 = 화면 '위'축 + 후면(-Z)축의 수평 성분
+  function facing() {
+    const R = S.R;
+    const X = [R[0],R[3],R[6]], Y = [R[1],R[4],R[7]], Z = [R[2],R[5],R[8]];
+    const a = screenAngle()*D2R;
+    const up = [Y[0]*Math.cos(a)+X[0]*Math.sin(a), Y[1]*Math.cos(a)+X[1]*Math.sin(a)];
+    const fe = up[0]-Z[0], fn = up[1]-Z[1];
+    if (Math.hypot(fe,fn) < 0.15) return;
+    S.heading = wrap(Math.atan2(fe, fn) * R2D);
+    const z = Z[2];
+    S.pose = z > 0.82 ? "평평 (화면 위)" : z < -0.82 ? "뒤집힘" : Math.abs(z) < 0.42 ? "세움" : "기울임";
+    const wF = Math.hypot(up[0],up[1]), wB = Math.hypot(Z[0],Z[1]);
+    S.axis = wF > wB*2 ? "폰 윗부분" : wB > wF*2 ? "후면 카메라" : "혼합";
+    S.pitch = Math.asin(Math.max(-1,Math.min(1,Y[2]))) * R2D;
+    S.roll  = Math.asin(Math.max(-1,Math.min(1,-X[2]))) * R2D;
+  }
+
+  // ---------- 화면 ----------
+  const f1 = v => (v>=0?"+":"") + v.toFixed(1);
+  function render() {
+    requestAnimationFrame(render);
+    const now = performance.now();
+    if (now - S.rateT > 1000) { S.rate = Math.round(S.cnt*1000/(now-S.rateT)); S.cnt = 0; S.rateT = now; }
+
+    const dA = $("dAcc"), dG = $("dGyr"), dM = $("dMag");
+    if (S.accRaw) { dA.className = "dot on"; $("vAcc").textContent = S.accRaw.map(f1).join(" "); }
+    if (S.gyroSrc) { dG.className = "dot on"; $("vGyr").textContent = S.gyro.map(v => f1(v*R2D)).join(" "); }
+    if (S.magOn && S.mag) {
+      const bad = S.magLen < 20 || S.magLen > 75;
+      dM.className = "dot " + (bad ? "warn" : "on");
+      $("vMag").textContent = S.mag.map(f1).join(" ") + "  |" + S.magLen.toFixed(0) + "|";
+      $("sMag").textContent = bad ? "자기장 세기 이상 (금속·자석 근처?) → 이 순간은 OS 방위로 대체" : "지구 자기장 → 북쪽 기준 (µT), 원시값 사용 중";
+    } else if (S.started) {
+      dM.className = "dot warn";
+      $("vMag").textContent = "원시값 미제공";
+      $("sMag").textContent = "이 브라우저는 자력계 원시값을 주지 않아 OS 나침반 방위를 북쪽 기준으로 사용";
+    }
+
+    if (S.heading == null) return;
+    const h = wrap(S.heading + (useTrue ? DECL : 0));
+    $("rose").setAttribute("transform", `rotate(${-h})`);
+    $("deg").firstChild.nodeValue = String(Math.round(h) % 360).padStart(3, "0");
+    $("card").textContent = KR16[Math.round(h/22.5) % 16];
+    $("ref").textContent = useTrue ? "진북 기준" : "자북 기준";
+    $("pose").textContent = S.pose; $("axis").textContent = S.axis;
+    $("pitch").textContent = S.pitch.toFixed(0) + "°"; $("roll").textContent = S.roll.toFixed(0) + "°";
+    $("mode").textContent = `자이로+가속도+${S.northSrc || "—"} · ${S.rate}Hz`;
+  }
+  requestAnimationFrame(render);
+
+  function setMsg(t, cls) { const m = $("msg"); m.innerHTML = t; m.className = cls || ""; }
+
+  // ---------- 시작 ----------
+  $("start").addEventListener("click", async () => {
+    if (!window.isSecureContext) { setMsg("센서는 <b>https://</b> 주소에서만 켜집니다. HTTPS로 올린 주소에서 열어 주세요.", "warn"); return; }
+    try {
+      if (typeof DeviceMotionEvent !== "undefined" && typeof DeviceMotionEvent.requestPermission === "function") {
+        if (await DeviceMotionEvent.requestPermission() !== "granted") throw new Error("동작 접근 거부");
+      }
+      if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") {
+        if (await DeviceOrientationEvent.requestPermission() !== "granted") throw new Error("방향 접근 거부");
+      }
+    } catch (err) { setMsg("센서 권한이 거부되었습니다 (" + err.message + "). 브라우저 설정에서 허용 후 새로고침하세요.", "warn"); return; }
+
+    S.started = true;
+    window.addEventListener("devicemotion", onMotion);
+    if ("ondeviceorientationabsolute" in window) window.addEventListener("deviceorientationabsolute", e => onOrientation(e, true));
+    else window.addEventListener("deviceorientation", e => onOrientation(e, false));
+
+    if (navigator.permissions) {
+      for (const n of ["accelerometer","gyroscope","magnetometer"]) { try { await navigator.permissions.query({ name: n }); } catch (e) {} }
+    }
+    startGyroscope();
+    if (startMagnetometer()) $("cal").hidden = false;
+
+    try { if (navigator.wakeLock) await navigator.wakeLock.request("screen"); } catch (e) {}
+    $("start").disabled = true; $("start").textContent = "측정 중";
+    setMsg("측정 중입니다. 폰을 어떤 각도로 들어도 위쪽 빨간 침이 바라보는 방향입니다.", "ok");
+    setTimeout(() => {
+      if (!S.accRaw) setMsg("가속도·자이로 값이 들어오지 않습니다. 휴대폰 브라우저에서 열었는지 확인하세요.", "warn");
+      else if (!S.heading) setMsg("북쪽 기준을 잡지 못했습니다. 폰으로 공중에 8자를 몇 번 그려 주세요.", "warn");
+    }, 3000);
+  });
+
+  // 자력계 보정: 폰을 모든 방향으로 돌리며 최소/최대값으로 하드아이언 오프셋 계산
+  $("cal").addEventListener("click", () => {
+    S.cal = { min:[Infinity,Infinity,Infinity], max:[-Infinity,-Infinity,-Infinity] };
+    $("cal").disabled = true;
+    setMsg("15초 동안 폰을 위아래, 좌우, 뒤집기까지 <b>모든 방향으로 천천히</b> 돌려 주세요.", "warn");
+    setTimeout(() => {
+      const c = S.cal; S.cal = null; $("cal").disabled = false;
+      const span = [0,1,2].map(i => c.max[i]-c.min[i]);
+      if (span.some(s => !(s > 30))) { setMsg("회전이 부족해 보정하지 못했습니다. 더 크게 돌리며 다시 시도하세요.", "warn"); return; }
+      S.magOff = [0,1,2].map(i => (c.max[i]+c.min[i])/2);
+      try { localStorage.setItem("magOff", JSON.stringify(S.magOff)); } catch (e) {}
+      setMsg("자력계 보정 완료. 오프셋 " + S.magOff.map(v => v.toFixed(1)).join(", ") + " µT", "ok");
+    }, 15000);
+  });
+})();
+</script>
+</body>
+</html>
