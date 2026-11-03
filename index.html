@@ -158,7 +158,7 @@ label.tog input{width:20px;height:20px;accent-color:var(--accent)}
   </div>
 </section>
 
-<p class="hint">GPS 없이 자이로로 회전을 적분해 빠르게 따라가고, 가속도계(중력)로 기울기를, 나침반(자력계)으로 북쪽을 계속 보정합니다(상보 필터). 폰을 평평하게 들면 <b>폰 윗부분</b>, 세워 들면 <b>후면 카메라</b>가 바라보는 방향이며, 그 사이 각도는 두 기준이 이어집니다.</p>
+<p class="hint">GPS 없이 자이로로 회전을 적분해 빠르게 따라가고, 가속도계(중력)로 기울기를, 나침반(자력계)으로 북쪽을 계속 보정합니다(상보 필터). 폰을 평평하게 들면 <b>폰 윗부분</b>, 세워 들면 <b>후면 카메라</b>가 바라보는 방향이며, 앞뒤·좌우로 기울여도 방향은 바뀌지 않습니다.</p>
 
 <script>
 (() => {
@@ -270,10 +270,14 @@ label.tog input{width:20px;height:20px;accent-color:var(--accent)}
     if (e.alpha == null || e.beta == null || e.gamma == null) return;
     let alpha = e.alpha, abs = absKnown || e.absolute;
     if (typeof e.webkitCompassHeading === "number" && e.webkitCompassHeading >= 0) {
-      const absA = wrap(360 - e.webkitCompassHeading), off = angDiff(absA, e.alpha);
-      const flat = Math.abs(e.beta) < 35 && Math.abs(e.gamma) < 35;
-      if (S.iosOffset === null) S.iosOffset = off;
-      else if (flat) S.iosOffset = wrap(S.iosOffset + angDiff(off, S.iosOffset) * 0.05);
+      // iOS alpha는 임의 기준이라 webkitCompassHeading(폰 윗부분의 수평 방위)과 비교해 북쪽 오프셋을 구한다.
+      // 윗부분이 거의 수직이면(약 75° 이상 세움) 방위가 불안정해 학습하지 않는다.
+      const Rr = fromEuler(e.alpha, e.beta, e.gamma);
+      if (Math.hypot(Rr[1], Rr[4]) > 0.25) {
+        const off = angDiff(Math.atan2(Rr[1], Rr[4]) * R2D, e.webkitCompassHeading);
+        S.iosOffset = S.iosOffset === null ? off : wrap(S.iosOffset + angDiff(off, S.iosOffset) * 0.05);
+      }
+      if (S.iosOffset === null) return;
       alpha = wrap(e.alpha + S.iosOffset); abs = true;
       S.iosAcc = e.webkitCompassAccuracy;
     }
@@ -337,15 +341,17 @@ label.tog input{width:20px;height:20px;accent-color:var(--accent)}
     return typeof window.orientation === "number" ? window.orientation : 0;
   }
 
-  // 바라보는 방향 = 화면 '위'축 + 후면(-Z)축의 수평 성분
+  // 바라보는 방향 = 화면 '오른쪽'축의 수평 성분을 왼쪽으로 90° 돌린 방향.
+  // 오른쪽 모서리는 앞뒤로 기울여도(pitch) 좌우로 기울여도(roll) 수평 방향이 그대로라
+  // 폰 기울기와 무관하게 몸이 향하는 쪽을 가리킨다. 평평하면 폰 윗부분, 세우면 후면 카메라 방향과 같다.
   function facing() {
     const R = S.R;
     const X = [R[0],R[3],R[6]], Y = [R[1],R[4],R[7]], Z = [R[2],R[5],R[8]];
     const a = screenAngle()*D2R;
     const up = [Y[0]*Math.cos(a)+X[0]*Math.sin(a), Y[1]*Math.cos(a)+X[1]*Math.sin(a)];
-    const fe = up[0]-Z[0], fn = up[1]-Z[1];
-    if (Math.hypot(fe,fn) < 0.15) return;
-    S.heading = wrap(Math.atan2(fe, fn) * R2D);
+    const right = [X[0]*Math.cos(a)-Y[0]*Math.sin(a), X[1]*Math.cos(a)-Y[1]*Math.sin(a)];
+    if (Math.hypot(right[0],right[1]) < 0.2) return;   // 폰을 옆으로 세워 오른쪽 모서리가 수직이면 직전 값 유지
+    S.heading = wrap(Math.atan2(-right[1], right[0]) * R2D);
     const z = Z[2];
     S.pose = z > 0.82 ? "평평 (화면 위)" : z < -0.82 ? "뒤집힘" : Math.abs(z) < 0.42 ? "세움" : "기울임";
     const wF = Math.hypot(up[0],up[1]), wB = Math.hypot(Z[0],Z[1]);

@@ -3,7 +3,7 @@ import Foundation
 // 플랫폼 무관 방향 계산. Android의 HeadingFilter.kt와 같은 로직이다.
 //
 // 1) OS가 합친 자세(회전행렬)에서 "바라보는 방향"을 구한다.
-//    폰을 눕히면 폰 윗변, 세우면 후면 카메라가 향하는 쪽 (두 축의 수평 성분 합).
+//    폰을 눕히면 폰 윗변, 세우면 후면 카메라가 향하는 쪽. 오른쪽 모서리 기준이라 기울기와 무관하다.
 // 2) 그 값을 그대로 쓰지 않고, 자이로 회전량으로 예측한 뒤 나침반 쪽으로 천천히 당긴다.
 //    자기 간섭이 감지되면 당기기를 멈추고 자이로만으로 버틴다.
 
@@ -55,12 +55,15 @@ final class HeadingFilter {
         if !(dt > 0 && dt < 0.2) { dt = 0 }
 
         // 기기 축의 지구 좌표 = 행렬의 열. 지구 '위'의 기기 좌표 = 3번째 행.
+        let xE = m[0], xN = m[3]                 // 폰 오른쪽 모서리(+X)
         let yE = m[1], yN = m[4]                 // 폰 윗변(+Y)
         let zE = m[2], zN = m[5], zU = m[8]      // 화면 바깥(+Z), 후면 카메라는 −Z
         let up = (x: m[6], y: m[7], z: m[8])
 
-        let fe = yE - zE, fn = yN - zN
-        let osHeading: Double? = hypot(fe, fn) < 0.15 ? nil : wrap360(atan2(fe, fn) * 180 / .pi)
+        // 바라보는 방향 = 오른쪽 모서리의 수평 방향을 왼쪽으로 90° 돌린 쪽.
+        // 앞뒤·좌우로 기울여도 오른쪽 모서리의 수평 방향은 그대로라 기울기에 영향받지 않는다.
+        // 폰을 옆으로 세워 오른쪽 모서리가 수직이면 나침반 값 없이 자이로로만 이어 간다.
+        let osHeading: Double? = hypot(xE, xN) < 0.2 ? nil : wrap360(atan2(-xN, xE) * 180 / .pi)
 
         let pose: Pose = zU > 0.82 ? .flat : zU < -0.82 ? .faceDown : abs(zU) < 0.42 ? .upright : .tilted
         let wTop = hypot(yE, yN), wCam = hypot(zE, zN)
