@@ -3,48 +3,61 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>방향 나침반</title>
+<title>바라보는 방향</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans+KR:wght@400;600;700&display=swap">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
-/* 레이아웃: 계기판 하나가 화면 중심, 아래에 판독값과 센서별 원시값 표 */
+/* 레이아웃: 맨 위 '바라보는 방향' 뷰가 주인공, 그 아래 시작 버튼, 나침반·센서 상세는 맨 아래 */
 :root{
-  --bg:#eef1ee; --panel:#f8faf8; --fg:#17201b; --muted:#5d6b63; --line:#c9d2cc;
-  --accent:#d2461f; --dial:#ffffff; --ok:#2f7d4f; --warn:#b7791f; --off:#9aa59f;
+  --bg:#eef1f5; --panel:#ffffff; --fg:#141a22; --muted:#5f6b7a; --line:#d3dbe5;
+  --accent:#2b6ff3; --me:#2b6ff3; --view:#e7edf5; --grid:#d6e0ec; --ring:#b9c8db;
+  --ok:#2f7d4f; --warn:#b7791f; --off:#9aa5b1;
   --f-ui:"IBM Plex Sans KR",system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
   --f-num:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
   color-scheme:light;
 }
 @media (prefers-color-scheme:dark){
-  :root{--bg:#101512;--panel:#171e1a;--fg:#e4ebe6;--muted:#8d9b93;--line:#2c3631;
-    --accent:#ff6a3d;--dial:#0c100e;--ok:#5fbf86;--warn:#e0a84a;--off:#55625b;color-scheme:dark}
+  :root{--bg:#0e1319;--panel:#161d26;--fg:#e6ebf1;--muted:#8e9aa8;--line:#2a3441;
+    --accent:#4c8dff;--me:#4c8dff;--view:#111923;--grid:#1b2633;--ring:#2c3b4d;
+    --ok:#5fbf86;--warn:#e0a84a;--off:#55606d;color-scheme:dark}
 }
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--f-ui);-webkit-text-size-adjust:100%}
-body{min-height:100vh;display:flex;flex-direction:column;align-items:center;gap:18px;
-  padding-block:max(20px,env(safe-area-inset-top)) max(28px,env(safe-area-inset-bottom));
+body{min-height:100vh;display:flex;flex-direction:column;align-items:center;gap:16px;
+  padding-block:max(16px,env(safe-area-inset-top)) max(28px,env(safe-area-inset-bottom));
   padding-left:max(16px,env(safe-area-inset-left));padding-right:max(16px,env(safe-area-inset-right))}
 header{width:100%;max-width:440px;display:flex;justify-content:space-between;align-items:baseline;gap:12px}
-h1{font-size:1.15rem;margin:0;font-weight:700}
-.src{font-family:var(--f-num);font-size:.72rem;color:var(--muted);text-align:right}
-.map-wrap{position:relative;width:100%;max-width:440px;height:min(60vh,480px);border-radius:12px;overflow:hidden;border:1px solid var(--line)}
-#map{width:100%;height:100%;background:var(--panel)}
-#locate{position:absolute;right:12px;bottom:24px;z-index:1001;width:44px;height:44px;padding:0;border-radius:50%;
-  background:#fff;color:#2b6ff3;font-size:1.3rem;line-height:1;box-shadow:0 1px 6px rgba(0,0,0,.3)}
-/* 내 위치: 파란 점 + 바라보는 방향으로 퍼지는 빔 */
-.me{position:relative;width:220px;height:220px;pointer-events:none}
-.me .beam{position:absolute;inset:0;width:100%;height:100%;visibility:hidden}
-.me .pt{position:absolute;left:50%;top:50%;width:20px;height:20px;margin:-10px 0 0 -10px;border-radius:50%;
-  background:#2b6ff3;border:3px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.45)}
-.readout{display:flex;flex-direction:column;align-items:center;gap:2px}
-.lbl{font-size:.8rem;color:var(--muted);font-weight:600}
-#card{font-size:2.6rem;font-weight:700;line-height:1.15;color:var(--accent)}
-#deg{font-family:var(--f-num);font-size:1.6rem;font-weight:600;line-height:1;font-variant-numeric:tabular-nums}
+h1{font-size:1.1rem;margin:0;font-weight:700}
+.src{font-family:var(--f-num);font-size:.7rem;color:var(--muted);text-align:right}
+
+/* 바라보는 방향 뷰 */
+.view{width:100%;max-width:440px;background:var(--panel);border:1px solid var(--line);border-radius:18px;overflow:hidden;
+  box-shadow:0 6px 24px rgba(20,40,80,.08)}
+#scene{display:block;width:100%;aspect-ratio:1;max-height:60vh;background:var(--view)}
+#halo{transform-box:fill-box;transform-origin:center;animation:pulse 2.4s ease-out infinite}
+@keyframes pulse{0%{transform:scale(.8);opacity:.45}100%{transform:scale(2.6);opacity:0}}
+@media (prefers-reduced-motion:reduce){#halo{animation:none;opacity:.15}}
+.readout{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;padding:14px 18px 16px;border-top:1px solid var(--line)}
+.lbl{font-size:.78rem;color:var(--muted);font-weight:600}
+#card{font-size:2.4rem;font-weight:700;line-height:1.15;color:var(--me)}
+.readout .r{text-align:right}
+#deg{font-family:var(--f-num);font-size:1.7rem;font-weight:600;line-height:1;font-variant-numeric:tabular-nums}
 #deg sup{font-size:.45em;vertical-align:.9em}
-#ref{font-size:.78rem;color:var(--muted)}
+#ref{font-size:.75rem;color:var(--muted);margin-top:4px}
+
+.controls{width:100%;max-width:440px;display:flex;flex-direction:column;gap:10px}
+button{font:inherit;font-weight:600;font-size:1rem;padding:15px;border-radius:12px;border:0;background:var(--accent);color:#fff;cursor:pointer}
+button.sec{background:transparent;color:var(--fg);border:1px solid var(--line)}
+button:focus-visible,input:focus-visible{outline:3px solid var(--fg);outline-offset:2px}
+button[disabled]{opacity:.5}
+label.tog{display:flex;align-items:center;gap:10px;font-size:.9rem}
+label.tog input{width:20px;height:20px;accent-color:var(--accent)}
+#msg{width:100%;max-width:440px;font-size:.86rem;line-height:1.55;padding:10px 14px;border-radius:10px;background:var(--panel);border:1px solid var(--line);color:var(--muted)}
+#msg.warn{border-color:var(--warn);color:var(--fg)} #msg.ok{border-color:var(--ok)}
+
+/* 아래: 나침반·센서 상세 */
+.sect{width:100%;max-width:440px;margin:14px 0 -6px;font-size:.8rem;font-weight:700;color:var(--muted);letter-spacing:.04em}
 .box{width:100%;max-width:440px;background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
 .box h2{margin:0;padding:10px 14px;font-size:.78rem;letter-spacing:.06em;color:var(--muted);border-bottom:1px solid var(--line);font-weight:600}
 .row{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;padding:10px 14px;border-bottom:1px solid var(--line);align-items:center}
@@ -60,44 +73,62 @@ h1{font-size:1.15rem;margin:0;font-weight:700}
 .cell:nth-last-child(-n+2){border-bottom:0}
 .k{font-size:.72rem;color:var(--muted)}
 .v{font-family:var(--f-num);font-size:.95rem;font-variant-numeric:tabular-nums}
-.controls{width:100%;max-width:440px;display:flex;flex-direction:column;gap:10px}
-button{font:inherit;font-weight:600;font-size:1rem;padding:14px;border-radius:10px;border:0;background:var(--accent);color:#fff;cursor:pointer}
-button.sec{background:transparent;color:var(--fg);border:1px solid var(--line)}
-button:focus-visible,input:focus-visible{outline:3px solid var(--fg);outline-offset:2px}
-button[disabled]{opacity:.5}
-label.tog{display:flex;align-items:center;gap:10px;font-size:.92rem}
-label.tog input{width:20px;height:20px;accent-color:var(--accent)}
-#msg{width:100%;max-width:440px;font-size:.88rem;line-height:1.55;padding:10px 14px;border-radius:10px;background:var(--panel);border:1px solid var(--line);color:var(--muted)}
-#msg.warn{border-color:var(--warn);color:var(--fg)} #msg.ok{border-color:var(--ok)}
 .hint{max-width:440px;font-size:.8rem;color:var(--muted);line-height:1.6;margin:0}
 </style>
 </head>
 <body>
 
 <header>
-  <h1>방향 나침반</h1>
+  <h1>바라보는 방향</h1>
   <span class="src" id="mode">센서 대기</span>
 </header>
 
-<div class="map-wrap">
-  <div id="map" aria-label="내 위치와 바라보는 방향 지도"></div>
-  <button id="locate" type="button" aria-label="내 위치로 이동">◎</button>
-</div>
-
-<div class="readout" aria-live="polite">
-  <div class="lbl">지금 바라보는 방향</div>
-  <div id="card">—</div>
-  <div id="deg">---<sup>°</sup></div>
-  <div id="ref">자북 기준</div>
-</div>
+<section class="view">
+  <svg id="scene" viewBox="-200 -200 400 400" role="img" aria-label="내가 바라보는 방향 (위쪽이 북쪽)">
+    <defs>
+      <pattern id="grid" width="40" height="40" x="-20" y="-20" patternUnits="userSpaceOnUse">
+        <path d="M40 0H0V40" fill="none" style="stroke:var(--grid)" stroke-width="1.5"/>
+      </pattern>
+      <radialGradient id="beamG" cx="0" cy="0" r="184" gradientUnits="userSpaceOnUse">
+        <stop offset="0" style="stop-color:var(--me);stop-opacity:.65"/>
+        <stop offset=".55" style="stop-color:var(--me);stop-opacity:.25"/>
+        <stop offset="1" style="stop-color:var(--me);stop-opacity:0"/>
+      </radialGradient>
+    </defs>
+    <rect x="-200" y="-200" width="400" height="400" fill="url(#grid)"/>
+    <circle r="90" fill="none" style="stroke:var(--ring)" stroke-width="1.5" stroke-dasharray="4 6"/>
+    <circle r="165" fill="none" style="stroke:var(--ring)" stroke-width="1.5" stroke-dasharray="4 6"/>
+    <g font-family="IBM Plex Sans KR, sans-serif" font-weight="700" font-size="17" text-anchor="middle" dominant-baseline="central">
+      <text y="-182" style="fill:var(--me)">북</text>
+      <text x="183" style="fill:var(--muted)">동</text>
+      <text y="183" style="fill:var(--muted)">남</text>
+      <text x="-183" style="fill:var(--muted)">서</text>
+    </g>
+    <g id="beam" visibility="hidden">
+      <path d="M0,0 L-66,-171 A184,184 0 0 1 66,-171 Z" fill="url(#beamG)"/>
+      <path d="M0,-33 L9,-21 L-9,-21 Z" style="fill:var(--me)"/>
+    </g>
+    <circle id="halo" r="16" style="fill:var(--me)"/>
+    <circle r="15" style="fill:var(--me)" stroke="#fff" stroke-width="5"/>
+  </svg>
+  <div class="readout" aria-live="polite">
+    <div><div class="lbl">지금 바라보는 방향</div><div id="card">—</div></div>
+    <div class="r"><div id="deg">---<sup>°</sup></div><div id="ref">자북 기준</div></div>
+  </div>
+</section>
 
 <div class="controls">
-  <button id="start" type="button">센서 시작</button>
+  <button id="start" type="button">방향 보기 시작</button>
+</div>
+
+<div id="msg">휴대폰에서 열고 <b>방향 보기 시작</b>을 누르세요. 위치(GPS)는 쓰지 않습니다.</div>
+
+<div class="sect">나침반 · 센서 정보</div>
+
+<div class="controls">
   <button id="cal" type="button" class="sec" hidden>자력계 보정 (15초)</button>
   <label class="tog"><input type="checkbox" id="trueN"> 진북 기준으로 보기 (한국 자편각 약 −9°)</label>
 </div>
-
-<div id="msg">휴대폰에서 열고 <b>센서 시작</b>을 누르세요.</div>
 
 <section class="box" aria-label="내장 센서">
   <h2>내장 센서 원시값</h2>
@@ -127,7 +158,7 @@ label.tog input{width:20px;height:20px;accent-color:var(--accent)}
   </div>
 </section>
 
-<p class="hint">자이로로 회전을 적분해 빠르게 따라가고, 가속도계(중력)로 기울기를, 자력계로 북쪽을 계속 보정합니다(상보 필터). 폰을 평평하게 들면 <b>폰 윗부분</b>, 세워 들면 <b>후면 카메라</b>가 바라보는 방향이며, 그 사이 각도는 두 기준이 이어집니다.</p>
+<p class="hint">GPS 없이 자이로로 회전을 적분해 빠르게 따라가고, 가속도계(중력)로 기울기를, 나침반(자력계)으로 북쪽을 계속 보정합니다(상보 필터). 폰을 평평하게 들면 <b>폰 윗부분</b>, 세워 들면 <b>후면 카메라</b>가 바라보는 방향이며, 그 사이 각도는 두 기준이 이어집니다.</p>
 
 <script>
 (() => {
@@ -137,25 +168,7 @@ label.tog input{width:20px;height:20px;accent-color:var(--accent)}
   const $ = id => document.getElementById(id);
   const KR16 = ["북","북북동","북동","동북동","동","동남동","남동","남남동","남","남남서","남서","서남서","서","서북서","북서","북북서"];
 
-  // ---------- 지도 (북쪽 위 고정, 내 위치 점 + 바라보는 방향 빔) ----------
-  const map = L.map("map", { zoomControl:false }).setView([37.5665, 126.978], 17);
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom:19,
-    attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }).addTo(map);
-  const acc = L.circle(map.getCenter(), { radius:0, stroke:false, fillColor:"#2b6ff3", fillOpacity:.12, interactive:false }).addTo(map);
-  const me = L.marker(map.getCenter(), { interactive:false, keyboard:false, icon: L.divIcon({ className:"", iconSize:[220,220], iconAnchor:[110,110],
-    html:'<div class="me"><svg class="beam" viewBox="-80 -80 160 160"><defs><radialGradient id="beamG" cx="0" cy="0" r="80" gradientUnits="userSpaceOnUse">'
-      + '<stop offset="0" stop-color="#2b6ff3" stop-opacity=".8"/><stop offset="1" stop-color="#2b6ff3" stop-opacity="0"/></radialGradient></defs>'
-      + '<path d="M0,0 L-33,-73 A80,80 0 0 1 33,-73 Z" fill="url(#beamG)"/></svg><span class="pt"></span></div>' }) }).addTo(map);
-  const beam = me.getElement().querySelector(".beam");
-  let follow = true, hasFix = false;
-  map.on("dragstart", () => { follow = false; });
-  $("locate").addEventListener("click", () => { follow = true; if (hasFix) map.setView(me.getLatLng(), Math.max(map.getZoom(), 17)); });
-  function onPos(p) {
-    const ll = [p.coords.latitude, p.coords.longitude];
-    me.setLatLng(ll); acc.setLatLng(ll).setRadius(p.coords.accuracy || 0);
-    if (follow) map.setView(ll, hasFix ? map.getZoom() : 17, { animate: hasFix });
-    hasFix = true;
-  }
+  const beam = $("beam");
 
   // ---------- 벡터/행렬 ----------
   const dot = (a,b) => a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
@@ -364,12 +377,12 @@ label.tog input{width:20px;height:20px;accent-color:var(--accent)}
 
     if (S.heading == null) return;
     const h = wrap(S.heading + (useTrue ? DECL : 0));
-    // 북쪽 고정 판 위에서 화살표만 회전 (359→0 넘어갈 때 한 바퀴 돌지 않게 누적각 사용)
-    S.disp = S.disp == null ? h : S.disp + angDiff(h, S.disp);
-    beam.style.transform = `rotate(${S.disp}deg)`;
-    beam.style.visibility = "visible";
+    // 북쪽이 위인 뷰에서 빔만 회전 (누적각이라 359→0에서 한 바퀴 돌지 않음, 살짝 부드럽게)
+    S.disp = S.disp == null ? h : S.disp + angDiff(h, S.disp) * 0.35;
+    beam.setAttribute("transform", `rotate(${S.disp.toFixed(2)})`);
+    beam.setAttribute("visibility", "visible");
     $("deg").firstChild.nodeValue = String(Math.round(h) % 360).padStart(3, "0");
-    $("card").textContent = KR16[Math.round(h/22.5) % 16];
+    $("card").textContent = KR16[Math.round(h/22.5) % 16] + "쪽";
     $("ref").textContent = useTrue ? "진북 기준" : "자북 기준";
     $("pose").textContent = S.pose; $("axis").textContent = S.axis;
     $("pitch").textContent = S.pitch.toFixed(0) + "°"; $("roll").textContent = S.roll.toFixed(0) + "°";
@@ -392,9 +405,6 @@ label.tog input{width:20px;height:20px;accent-color:var(--accent)}
     } catch (err) { setMsg("센서 권한이 거부되었습니다 (" + err.message + "). 브라우저 설정에서 허용 후 새로고침하세요.", "warn"); return; }
 
     S.started = true;
-    if (navigator.geolocation) navigator.geolocation.watchPosition(onPos,
-      err => setMsg("위치를 가져오지 못했습니다 (" + err.message + "). 방향만 표시합니다.", "warn"),
-      { enableHighAccuracy:true, maximumAge:3000, timeout:20000 });
     window.addEventListener("devicemotion", onMotion);
     if ("ondeviceorientationabsolute" in window) window.addEventListener("deviceorientationabsolute", e => onOrientation(e, true));
     else window.addEventListener("deviceorientation", e => onOrientation(e, false));
@@ -407,7 +417,7 @@ label.tog input{width:20px;height:20px;accent-color:var(--accent)}
 
     try { if (navigator.wakeLock) await navigator.wakeLock.request("screen"); } catch (e) {}
     $("start").disabled = true; $("start").textContent = "측정 중";
-    setMsg("측정 중입니다. 지도 위 파란 점이 내 위치, 퍼지는 빛이 지금 바라보는 방향입니다 (지도는 북쪽이 위).", "ok");
+    setMsg("측정 중입니다. 파란 빛이 지금 바라보는 방향입니다 (화면 위쪽이 북쪽).", "ok");
     setTimeout(() => {
       if (!S.accRaw) setMsg("가속도·자이로 값이 들어오지 않습니다. 휴대폰 브라우저에서 열었는지 확인하세요.", "warn");
       else if (!S.heading) setMsg("북쪽 기준을 잡지 못했습니다. 폰으로 공중에 8자를 몇 번 그려 주세요.", "warn");
